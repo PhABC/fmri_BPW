@@ -145,7 +145,7 @@ def matrixSorting(X):
     return Xsort, idx
 
 
-def nearPSD(A, epsilon = 0):
+def nearPSD(A, epsilon = 0.1):
     'Nearest positive semi-definite Matrix'
     
     n = A.shape[0]
@@ -177,10 +177,22 @@ def plotCovs(C,Chat):
     plt.show()
     
     
-def sampleCov(E, df):
-    'Will calculate the sample covariance of residuals (mean 0)'
+def standardizeMat(M):
+    'Will standardize matrix M so that variance of each row is 1.'
     
-    return np.dot(E.T, E)/df
+    #Shape (number of voxels X timepoints)
+    p, n = M.shape
+
+    #Stanard deviation
+    sd = np.std(M, axis = 1, ddof = 1)
+
+    #Tiled SD
+    tiled = np.tile(np.std(M, axis = 1, ddof = 1), (n,1)).T
+
+    #Standardizing
+    mStand = M / tiled
+
+    return mStand
 
 
 def scaleMod(Y, a, b):
@@ -203,6 +215,7 @@ def scaleMod(Y, a, b):
     
 def simDist(p):
     'Simulate a distance matrix'
+
     
     #XYZ position of voxels
     XYZ = np.random.randn(p, 3) + 7; 
