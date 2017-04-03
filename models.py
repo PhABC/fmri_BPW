@@ -1,7 +1,8 @@
 import numpy as np
 import scipy as sp
 
-from PWoptim.functions import *
+from fmri_BPW.functions import *
+from lmfit              import minimize, Parameters, report_fit
 
 
 class model(object):
@@ -11,11 +12,12 @@ class model(object):
         
         #Order of input argument for each model
         if name == 'euclidC':
-            self.order = ['sd1', 'lamb1']
-                          
-            self.yhat = self._euclidC
+            
+            self.cHat = self._euclidC
+
         else:
-            raise Exception('Name of model does not refer to any known model')
+            raise Exception('Name of model' + '< ' + str(name) + ' >' + \
+                            'does not refer to any known model')
     
     '''
                         DEFINING MODELS
@@ -67,17 +69,17 @@ def costFunction(P, modelName, X, Y):
     '''
 
     #Building model
-    m = model('euclidC')
+    m = model(modelName)
 
-    #Calculating predicted Y
-    Yhat = m.yhat(X, P)
+    #Calculating predicted Y (stacked)
+    Yhat = m.cHat(X, P)
 
     return (Y - Yhat) + np.sum(Yhat[abs(Yhat) > 1])*100
 
 
 
 
-def crossValFit(X, D, P, model):
+def crossValFit(X, D, P, modelName):
     ''' 
     Will cross-validate a model (or a list of model)
     
@@ -94,6 +96,9 @@ def crossValFit(X, D, P, model):
     Res  = np.zeros((nruns, nvox**2))
     MSE  = np.zeros(nruns)
     Phat = [None]*nruns 
+
+    #Stacking D
+    D = np.hstack(D.copy())
     
     #Loop over all run with 1 being test set
     for r in np.arange(nruns):
@@ -102,12 +107,12 @@ def crossValFit(X, D, P, model):
         M = np.ones(nruns); M[r] = 0; M = M == 1
         
         #Test sample-covariance
-        Ctest = np.corrcoef(X[:,:,r])
+        Ctest = abs(np.hstack(np.corrcoef(X[:,:,r])))
         
         #Arguments for minimize function
-        args = (model,             # Model name
-                np.hstack(D),      # Distance (or input to model) 
-                np.hstack(Ctest))  # Sample correlation/covariance matrix
+        args = (modelName,  # Model name
+                D,          # Distance (or input to model) 
+                Ctest)      # Sample correlation/covariance matrix
         
         #Fitting model on current run
         out = minimize(costFunction, P, args = args)
@@ -115,16 +120,20 @@ def crossValFit(X, D, P, model):
         #Extracting estimated parameters
         Phat[r] = {k : out.params[k].value for k in out.params.keys()}
         
+        #Building model
+        m = model(modelName)
+        
         #Covariance modelling to test fit
-        S = simNoise(1, D, Phat[r], modelName = model)
+        cHat = m.cHat(D, Phat[r]) #Will be stacked since D is stacked
         
         #Residuals
-        Res[r,:] = np.hstack(Ctest - S['C'])
+        Res[r,:] = (Ctest - cHat)
         
         #Mean-Square error
         MSE[r] = np.mean( (Res[r,:])**2)
         
-        corr   = np.corrcoef(np.hstack(Ctest), np.hstack(S['C']))
+        #Correlation
+        corr = np.corrcoef(Ctest, cHat)
         
         print('Fold {} of {} ~ Correlation : {:.2f}'.format(r+1, nruns, corr[0,1]))
         
@@ -153,7 +162,7 @@ def simNoise(n, D, modelParam, modelName = 'euclidC'):
     m = model(modelName)
     
     #Covariance
-    C = m.yhat(D, modelParam)
+    C = m.cHat(D, modelParam)
 
     #Simulating noise
     E = np.random.multivariate_normal([0]*p, C, n)
