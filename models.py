@@ -51,7 +51,7 @@ class model(object):
 
         return C
     
-    
+
     
 def costFunction(P, modelName, X, Y):
 
@@ -126,7 +126,7 @@ def crossValFit(X, D, P, model):
         
         corr   = np.corrcoef(np.hstack(Ctest), np.hstack(S['C']))
         
-        print('Fold {} of {} : corr ~ {:.2f}'.format(r+1, nruns, corr[0,1]))
+        print('Fold {} of {} ~ Correlation : {:.2f}'.format(r+1, nruns, corr[0,1]))
         
     return MSE, Res, Phat
 
