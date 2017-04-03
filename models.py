@@ -11,12 +11,20 @@ class model(object):
         'Add the order of parameter'
         
         #Order of input argument for each model
-        if name == 'euclidC':
-            
-            self.cHat = self._euclidC
 
-        else:
-            raise Exception('Name of model' + '< ' + str(name) + ' >' + \
+        if isinstance(name, list):
+            #If multiple moels
+
+            self._modelList = name
+            self.cHat       = self.multiModel
+
+        else :
+
+            if name == 'euclidC':
+                self.cHat = self.euclidC
+
+            else:
+                raise Exception('Name of model' + '< ' + str(name) + ' >' + \
                             'does not refer to any known model')
     
     '''
@@ -28,7 +36,7 @@ class model(object):
             
     '''
     
-    def _euclidC(self, D, P):
+    def euclidC(self, X, P):
     
         '''
         Euclidean distance covariance estimation
@@ -45,11 +53,26 @@ class model(object):
         #since cov_ij = corr_ij * sqrt(sd_i * sd_j)
         
         #Unpacking dictionnary (changing locals() doesn't work inside functions ...)
-        sd = P['sd']; lamb = P['lamb']
+        sd = P['sd_euc']; lamb = P['lamb_euc']
 
         
         #Correlation modelling
-        C = np.minimum(np.exp(-D / (2 * sd)) + lamb, 1)
+        C = np.minimum(np.exp(-X / (2 * sd)) + lamb, 1)
+
+        return C
+
+
+    def multiModel(self, X, P):
+        '''Combine models '''
+
+        for m in range(len(self._modelList)):
+
+            curModel = getattr(self, self._modelList[m])
+
+            if not m:
+                C = curModel(X, P)
+            else:
+                C = C + curModel(X, P)
 
         return C
     
