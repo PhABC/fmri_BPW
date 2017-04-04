@@ -54,12 +54,13 @@ class model(object):
     def lambdaC(self, X, P):
         'Correlation floor'
 
-        return P['lamb']
+        C = P['lamb']
+
+        return C
 
 
     def multiModel(self, X, P):
         '''Combine models '''
-
 
 
         for m in range(len(self._modelList)):
@@ -72,6 +73,11 @@ class model(object):
                 C = C + curModel(X, P)
 
         return C
+
+    def sampleCor(self, X, P):
+        'Will calculate the sample correlation from runs'
+
+        E = X['E']
 
 
 
@@ -100,12 +106,13 @@ class model(object):
             nVox = V.shape
 
         #If sharing vessel
-        Vout = np.outer(V, V)
-
         if nLab > 1:
-            C = np.sum(Vout * phi, axis = 0)
+            Vout = np.dot(V.T, V)
         else:
-            C = Vout * phi
+            Vout = np.outer(V,V)
+        
+        #Correlation
+        C = Vout * phi
 
         return flatTriangle(C)
     
@@ -158,13 +165,16 @@ def crossValFit(E, X, P, modelName):
         #Mask for indexing (excluding test)
         M = np.ones(nruns); M[r] = 0; M = M == 1
         
+        #Training sample-covariance
+        Ctrain = flatTriangle( np.corrcoef( np.vstack(E[:,:, M].T).T) )
+        
         #Test sample-covariance
-        Ctest = flatTriangle(np.corrcoef(E[:,:,r]))
+        Ctest  = flatTriangle(np.corrcoef(E[:,:,r]))
         
         #Arguments for minimize function
         args = (modelName,  # Model name
                 X,          # Distance (or input to model) 
-                Ctest)      # Sample correlation/covariance matrix
+                Ctrain)     # Sample correlation/covariance matrix
         
         #Fitting model on current run
         out = minimize(costFunction, P, args = args)
@@ -186,8 +196,12 @@ def crossValFit(E, X, P, modelName):
         
         #Correlation
         corr = np.corrcoef(Ctest, cHat)
+
+        #Correlation
+        corrNull = np.corrcoef(Ctest, Ctrain)
         
-        print('Fold {} of {} ~ Correlation : {:.2f}'.format(r+1, nruns, corr[0,1]))
+        print('Fold {} of {} ~ Model Correlation : {:.2f}   |'.format(r+1, nruns, corr[0,1]) + \
+              '  Sample corr Correlation : {:.2f}'.format(corrNull[0,1]) )
         
     return MSE, Res, Phat
 
@@ -216,6 +230,9 @@ def simNoise(n, X, modelParam, modelName = 'euclidC'):
     
     #Covariance
     C = m.cHat(X, modelParam)
+
+    #Max C
+    C = np.minimum(C, 1)
 
     #Simulating noise
     E = np.random.multivariate_normal([0]*p, C, n)
