@@ -129,6 +129,23 @@ def filterIdx(dat, idx):
     
     return D
 
+def flatTriangle(M):
+    ''' Will take matrix M and take the flat upper triangle part'''
+
+    return M[np.triu_indices(M.shape[0], 1)]
+
+
+def squareTriangle(A, n):
+    '''Will put the triangle array A as squared matrix.
+      A : triangle array'
+      n : Number of voxels'
+    '''
+    #Output matrix 
+    tri = np.zeros((n,n))
+    tri[np.triu_indices(n, 1)] = A
+
+    return tri + tri.T
+
 
 def matrixSorting(X):
     'Will sort matrix based on projection on diagonal'
@@ -171,7 +188,6 @@ def plotCovs(C,Chat):
     plt.colorbar()
 
     plt.subplot(1,2,2)
-    plt.imshow(Chat)
     plt.title('Estimated Covariance', fontsize = 20)
     plt.colorbar()
     plt.show()
