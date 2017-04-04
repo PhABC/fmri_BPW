@@ -12,20 +12,9 @@ class model(object):
         
         #Order of input argument for each model
 
-        if isinstance(name, list):
-            #If multiple moels
+        self._modelList = name
+        self.cHat       = self.multiModel
 
-            self._modelList = name
-            self.cHat       = self.multiModel
-
-        else :
-
-            if name == 'euclidC':
-                self.cHat = self.euclidC
-
-            else:
-                raise Exception('Name of model' + '< ' + str(name) + ' >' + \
-                            'does not refer to any known model')
     
     '''
                         DEFINING MODELS
@@ -53,17 +42,25 @@ class model(object):
         #since cov_ij = corr_ij * sqrt(sd_i * sd_j)
         
         #Unpacking dictionnary (changing locals() doesn't work inside functions ...)
-        sd = P['sd_euc']; lamb = P['lamb_euc']
+        sd = P['sd_euc'] ; D  = X['euclidD']
 
         
         #Correlation modelling
-        C = np.minimum(np.exp(-X / (2 * sd)) + lamb, 1)
+        C = np.minimum(np.exp(-D / (2 * sd)), 1)
 
         return C
 
 
+    def lambdaC(self, X, P):
+        'Correlation floor'
+
+        return P['lamb']
+
+
     def multiModel(self, X, P):
         '''Combine models '''
+
+
 
         for m in range(len(self._modelList)):
 
@@ -75,6 +72,42 @@ class model(object):
                 C = C + curModel(X, P)
 
         return C
+
+
+
+    def vesselC(self, X, P):
+        ''' 
+        Vessel model
+
+        X : matrix nb_labels x nb_voxels
+        P : 
+            'phi' : Constant increase
+
+        '''
+
+        #Phi constance increase for within voxel
+        phi = P['phi_vess']
+
+        #Vessel Mask index
+        V = X['vesselM']
+
+        #S
+        if len(V.shape) > 1 :
+            #Dimensions
+            nLab, nVox = V.shape
+        else :
+            nLab = 1
+            nVox = V.shape
+
+        #If sharing vessel
+        Vout = np.outer(V, V)
+
+        if nLab > 1:
+            C = np.sum(Vout * phi, axis = 0)
+        else:
+            C = Vout * phi
+
+        return flatTriangle(C)
     
 
     
@@ -101,27 +134,23 @@ def costFunction(P, modelName, X, Y):
 
 
 
-
-def crossValFit(X, D, P, modelName):
+def crossValFit(E, X, P, modelName):
     ''' 
     Will cross-validate a model (or a list of model)
     
-    X     : Data with shape (nvox,npoints,nruns)
-    D     : Distance (or other feature) matrix
+    E     : Data with shape (nvox,npoints,nruns)
+    X     : Distance (or other feature) matrix
     P     : Parameter dictionnary for minimize function
     model : Model name
     '''
     
     #Dimensions
-    nvox, ntime, nruns = X.shape
+    nvox, ntime, nruns = E.shape
     
     #Initializing
-    Res  = np.zeros((nruns, nvox**2))
+    Res  = np.zeros((nruns, int(nvox**2/2 - nvox/2)))
     MSE  = np.zeros(nruns)
     Phat = [None]*nruns 
-
-    #Stacking D
-    D = np.hstack(D.copy())
     
     #Loop over all run with 1 being test set
     for r in np.arange(nruns):
@@ -130,11 +159,11 @@ def crossValFit(X, D, P, modelName):
         M = np.ones(nruns); M[r] = 0; M = M == 1
         
         #Test sample-covariance
-        Ctest = abs(np.hstack(np.corrcoef(X[:,:,r])))
+        Ctest = flatTriangle(np.corrcoef(E[:,:,r]))
         
         #Arguments for minimize function
         args = (modelName,  # Model name
-                D,          # Distance (or input to model) 
+                X,          # Distance (or input to model) 
                 Ctest)      # Sample correlation/covariance matrix
         
         #Fitting model on current run
@@ -147,7 +176,7 @@ def crossValFit(X, D, P, modelName):
         m = model(modelName)
         
         #Covariance modelling to test fit
-        cHat = m.cHat(D, Phat[r]) #Will be stacked since D is stacked
+        cHat = m.cHat(X, Phat[r]) #Will be stacked since D is stacked
         
         #Residuals
         Res[r,:] = (Ctest - cHat)
@@ -164,7 +193,7 @@ def crossValFit(X, D, P, modelName):
 
 
 
-def simNoise(n, D, modelParam, modelName = 'euclidC'):
+def simNoise(n, X, modelParam, modelName = 'euclidC'):
     '''Noise simulation
     
     p : Number of dimensions (voxels)
@@ -177,15 +206,16 @@ def simNoise(n, D, modelParam, modelName = 'euclidC'):
     
     #Covariance matrix
     #print('Creating covariance matrix          ... \n\n')
-    
+    D = X['euclidD']
+
     #Number of voxels
-    p =D.shape[0]
+    p = D.shape[0]
 
     #Creating model
     m = model(modelName)
     
     #Covariance
-    C = m.cHat(D, modelParam)
+    C = m.cHat(X, modelParam)
 
     #Simulating noise
     E = np.random.multivariate_normal([0]*p, C, n)
